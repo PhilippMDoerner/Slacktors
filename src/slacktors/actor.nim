@@ -6,9 +6,9 @@ import ./threadCleanup
 export mailboxTable
 
 type Actor* = object
-  targetMailboxes*: MailboxTable
-  sourceMailboxes*: MailboxTable
-  command*: proc(sources, targets: MailboxTable) {.nimcall, gcsafe, raises: [].}
+  targetMailboxes: MailboxTable
+  sourceMailboxes: MailboxTable
+  command: proc(sources, targets: MailboxTable) {.nimcall, gcsafe, raises: [].}
 
 proc defaultOnError(e: ref Exception) {.nimcall, gcsafe, raises:[].} = discard
 

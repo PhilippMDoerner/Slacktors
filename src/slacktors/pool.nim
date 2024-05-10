@@ -1,3 +1,4 @@
+import std/importutils
 import taskpools
 import ./actor
 
@@ -6,6 +7,7 @@ export taskpools
 var POOL: Taskpool
 
 proc runProc(actor: Actor) {.gcsafe, nimcall, raises: [].} =
+  privateAccess(Actor)
   actor.command(
     actor.sourceMailboxes, 
     actor.targetMailboxes
