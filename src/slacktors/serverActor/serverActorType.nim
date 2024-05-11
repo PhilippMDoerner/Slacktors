@@ -1,10 +1,11 @@
-import std/[atomics, macros]
+import std/[atomics, macros, strformat]
 import chronos
 import chronos/threadsync
 import ../mailboxTable
 import chronicles
 
-type ShutdownError* = object of CatchableError ## A custom error. Indicates an issue that happened during shutdown.
+type ShutdownError* = object of CatchableError ## Indicates an issue that happened during shutdown.
+type SendingError* = object of ValueError ## Thrown when a message was attempted to be sent to a recipient that cannot possibly receive it.
 
 type ServerActor* = object
   name*: string
@@ -25,9 +26,9 @@ proc waitForSendSignal*(server: ServerActor) =
   ## Causes the server to work through its remaining async-work
   ## and go into a low powered state afterwards. Receiving a signal
   ## will wake the server up again.
-  notice "Going to sleep", serverName = server.name
+  debug "Going to sleep", serverName = server.name
   waitFor server.signalReceiver.wait()
-  notice "Waking up", serverName = server.name
+  debug "Waking up", serverName = server.name
 
 proc processMessages*(actor: ServerActor) = 
   actor.processProc(actor)
@@ -42,3 +43,23 @@ proc gracefulShutdown*(server: ServerActor) =
   if closeResult.isErr():
     raise newException(ShutdownError, closeResult.error)
   notice "Regular shut down of server ended", serverName = server.name
+
+proc sendTo*[T](value: T, server: ServerActor) =
+  try:
+    server.sources[T].send(value)
+
+  except KeyError as e:
+    raise newException(SendingError, fmt"The server '{server.name}' does not have a mailbox for type '{$T}'. ", parentException = e)
+  
+  except CatchableError as e:
+    raise newException(SendingError, "Failed to send message to server " & server.name, parentException = e)
+
+proc trySendTo*[T](value: T, server: ServerActor): bool =
+  try:
+    return server.sources[T].trySend(value)
+  
+  except KeyError as e:
+    raise newException(SendingError, fmt"The server '{server.name}' does not have a mailbox for type '{$T}'. ", parentException = e)
+  
+  except CatchableError as e:
+    raise newException(SendingError, "Failed to send message to server " & server.name, parentException = e)

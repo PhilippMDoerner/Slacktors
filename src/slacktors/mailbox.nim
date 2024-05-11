@@ -34,10 +34,7 @@ proc tryRecv*[T](mailbox: Mailbox[T]): Option[T] =
 
 proc peek*[T](mailbox: Mailbox[T]): int = mailbox[].peek()
 
-proc hasMessages*[T](mailbox: Mailbox[T]): bool = 
-  let counter = mailbox.peek()
-  notice "Mailbox was scanned for messages", mailboxType = $T, msgCount = counter
-  mailbox.peek() > 0
+proc hasMessages*[T](mailbox: Mailbox[T]): bool = mailbox.peek() > 0
 
 iterator messages*[T](mailbox: Mailbox[T]): T =
   var msg: T
