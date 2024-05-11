@@ -16,7 +16,7 @@ proc hasKey*[T](table: TypeTable, key: typedesc[T]): bool =
   let innerKey = key.getTypeId()
   return Table[TypeId, pointer](table).hasKey(innerKey)
 
-proc `[]`*[T](table: TypeTable; typ: typedesc[T]): T =
+proc `[]`*[T: ptr](table: TypeTable; typ: typedesc[T]): T =
   let key = typ.getTypeId()
   let valuePtr = Table[TypeId, pointer](table)[key]
   return cast[T](valuePtr)

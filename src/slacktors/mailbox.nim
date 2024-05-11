@@ -1,5 +1,6 @@
 import threading/channels
 import std/[options, isolation]
+import chronicles
 
 type Mailbox*[T] = ptr Chan[T]
 
@@ -32,3 +33,13 @@ proc tryRecv*[T](mailbox: Mailbox[T]): Option[T] =
     return none(T)
 
 proc peek*[T](mailbox: Mailbox[T]): int = mailbox[].peek()
+
+proc hasMessages*[T](mailbox: Mailbox[T]): bool = 
+  let counter = mailbox.peek()
+  notice "Mailbox was scanned for messages", mailboxType = $T, msgCount = counter
+  mailbox.peek() > 0
+
+iterator messages*[T](mailbox: Mailbox[T]): T =
+  var msg: T
+  while mailbox[].tryRecv(msg):
+    yield msg

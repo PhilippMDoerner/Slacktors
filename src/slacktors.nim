@@ -1,38 +1,46 @@
 import std/os
 import taskpools
-import ./slacktors/[mailbox, actor]
-let threads = 2
+import ./slacktors/[mailbox, actor, serverActor]
+export mailbox
+export actor
 
-type A = ref object
-  name: string
+when isMainModule:
+  ## Dummy Example Code
+  let threads = 2
 
-proc run(sources: MailboxTable, targets: MailboxTable) =
-  echo "Start run"
-  sleep(1000)
-  echo sources[A].recv().repr
+  type A = ref object
+    name: string
 
-var act = newActor(
-  run, 
-  proc(e: ref Exception) {.nimcall, gcsafe, raises:[].} = 
-    echo "Error"
-)
+  proc run(sources: MailboxTable, targets: MailboxTable) =
+    echo "Start run"
+    sleep(1000)
+    for msg in sources[A].messages:
+      echo msg.repr
 
-let source = newMailbox[A](1)
-act.addSource(source)
+  var act = newActor(
+    run, 
+    proc(e: ref Exception) {.nimcall, gcsafe, raises:[].} = 
+      echo "Error"
+  )
 
-when defined(globalpool):
-  import ./slacktors/pool
-  openPool(size = threads)
-  act.run()
-else:
-  var tp = Taskpool.new(num_threads = threads)
-  act.runIn(tp)
+  let source = newMailbox[A](5)
+  act.addSource(source)
 
-source.send(A(name: "test"))
-echo "Post send"
+  when defined(globalpool):
+    import ./slacktors/pool
+    openPool(size = threads)
+    act.run()
+  else:
+    var tp = Taskpool.new(num_threads = threads)
+    act.runIn(tp)
 
-when defined(globalpool):
-  closePool()
-else:
-  tp.syncAll()
-  tp.shutDown()
+  source.send(A(name: "test"))
+  source.send(A(name: "test"))
+  source.send(A(name: "test"))
+  echo "Post send"
+
+  when defined(globalpool):
+    closePool()
+  else:
+    tp.syncAll()
+    tp.shutDown()
