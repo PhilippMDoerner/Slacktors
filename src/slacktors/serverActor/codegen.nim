@@ -22,6 +22,15 @@ proc generateInternalProcessMessages(types: NimNode): NimNode =
   ## ```
   ## Requires each msg type to have a defined proc: proc process(x: <TYPE>) 
   result = newProc(procType = nnkLambda)
+  let raisesPragma = nnkPragma.newTree(
+    nnkExprColonExpr.newTree(
+      ident("raises"),
+      nnkBracket.newTree(ident("KillError"))
+    )
+  )
+  result.pragma = raisesPragma
+  echo result.repr
+  
   let server = ident("server")
   let serverParam = newIdentDefs(
     server, ident("ServerActor")
@@ -30,16 +39,22 @@ proc generateInternalProcessMessages(types: NimNode): NimNode =
   
   for typ in types:
     let processMailboxNode = quote do:
-      for msg in `server`.sources[`typ`].messages:
-        debug "Bulk recv: Thread <= Mailbox", server = `server`.name, msgTyp = $`typ`, msg = msg
-        try:
-          `server`.process(msg)
-        except KillError as e:
-          raise e ## Reraise Exception so it can break the server loop
-        
-        except CatchableError as e:
-          error "Message caused exception", msgType = $typeOf(msg), msg = msg, error = e.repr
-    
+      try:
+        for msg in `server`.sources[`typ`].messages:
+          debug "Bulk recv: Thread <= Mailbox", server = `server`, msgTyp = $`typ`, msg = msg
+          try:
+            `server`.process(msg)
+          except KillError as e:
+            raise e ## Reraise Exception so it can break the server loop
+          
+          except CatchableError as e:
+            error("Message caused exception", server = `server`, msgType = $typeOf(msg), msg = msg, error = e[])
+      
+      except KillError as e:
+        raise e ## Reraise Exception so it can break the server loop
+      
+      except CatchableError as e:
+        error("Failed to access mailbox", server = `server`, mailboxType = $`typ`, error = e[])
     result.body.add(processMailboxNode)
 
 proc generateInternalHasMessages(types: NimNode): NimNode =
@@ -121,6 +136,7 @@ proc createServerActor(
   let boxesBlockNode = generateMailboxes(types, mailboxSize)
   let processProcNode = generateInternalProcessMessages(types)
   let hasMessagesProcNode = generateInternalHasMessages(types)
+  echo processProcNode.repr
   return quote do:
     block:
       privateAccess(ServerActor)

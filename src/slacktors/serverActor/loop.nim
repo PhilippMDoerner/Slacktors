@@ -3,8 +3,6 @@ import ./serverActorType
 import chronicles
 import taskpools
 
-type KillError* = object of CatchableError ## A custom error. Throwing this will gracefully shut down the server
-
 var IS_RUNNING*: Atomic[bool] ## \
 ## Global switch that controls whether threadServers keep running or shut down.
 ## Change this value to false to trigger shut down of all threads running
@@ -18,14 +16,14 @@ proc shutdownServer*() =
   ## Triggers the graceful shut down of the thread-server this proc is called on.
   raise newException(KillError, "Shutdown")
 
-proc runServerLoop(server: ServerActor) {.gcsafe.} =  
+proc runServerLoop(server: ServerActor) {.gcsafe.} =
   block serverLoop: 
     while isRunning():
-      if not server.hasMessages():
-        server.waitForSendSignal()
-      
       {.gcsafe}: 
         try:
+          if not server.hasMessages():
+            server.waitForSendSignal()
+          
           server.processMessages()
           
         except KillError as e:
@@ -33,13 +31,14 @@ proc runServerLoop(server: ServerActor) {.gcsafe.} =
           break serverLoop
           
         except CatchableError as e:
-          error "Message caused exception", error = e[]
+          error "Message caused exception", server = server, error = e[]
 
 proc runServerTask*(actor: ServerActor) {.gcsafe, nimcall, raises: [].} =
   try:
     actor.runServerLoop()
   except Exception as e:
-    error("Server crashed with exception: ", error = e[])
+    error("Server crashed with exception: ", server = actor, error = e[])
+  notice("Server finished", server = actor)
 
 proc runIn*(actor: ServerActor, tp: Taskpool) =
   tp.spawn actor.runServerTask()

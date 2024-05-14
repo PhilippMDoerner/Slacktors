@@ -6,14 +6,17 @@ import chronicles
 
 type ShutdownError* = object of CatchableError ## Indicates an issue that happened during shutdown.
 type SendingError* = object of ValueError ## Thrown when a message was attempted to be sent to a recipient that cannot possibly receive it.
+type KillError* = object of CatchableError ## A custom error. Throwing this will gracefully shut down the server
 
 type ServerActor* = object
   name: string
   sources: MailboxTable
   targets: MailboxTable
-  processProc: proc(server: ServerActor) {.nimcall.} # Processing is done by capturing "process(value: T)" overloads
+  processProc: proc(server: ServerActor) {.nimcall, raises: [KillError].} # Processing is done by capturing "process(value: T)" overloads
   hasMessagesProc: proc(mailboxes: MailboxTable): bool {.nimcall, gcsafe.}
   signalReceiver: ThreadSignalPtr ## For internal usage only. Signaller to wake up thread from low power state.
+
+proc `$`*(server: ServerActor): string = server.name
 
 proc sendWakeupSignalTo*(server: ServerActor) =
   let response = server.signalReceiver.fireSync()
@@ -47,6 +50,7 @@ proc sendTo*[T](value: T, server: ServerActor) =
   debug "trySend  : Thread => Mailbox", server = server.name, msgTyp = $T
   try:
     server.sources[T].send(value)
+    server.sendWakeupSignalTo()
   except KeyError as e:
     raise newException(SendingError, fmt"The server '{server.name}' does not have a mailbox for type '{$T}'. ", parentException = e)
   
@@ -56,8 +60,9 @@ proc sendTo*[T](value: T, server: ServerActor) =
 proc trySendTo*[T](value: T, server: ServerActor): bool =
   debug "trySend  : Thread => Mailbox", server = server.name, msgTyp = $T
   try:
-    return server.sources[T].trySend(value)
-  
+    let success = server.sources[T].trySend(value)
+    server.sendWakeupSignalTo()
+    return success
   except KeyError as e:
     raise newException(SendingError, fmt"The server '{server.name}' does not have a mailbox for type '{$T}'. ", parentException = e)
   
