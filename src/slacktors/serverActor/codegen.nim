@@ -1,7 +1,7 @@
 import ./serverActorType
 import chronos
 import chronos/threadsync
-import std/[importutils, sequtils, strutils, strformat, macros]
+import std/[importutils, sequtils, strutils, strformat, atomics, macros]
 
 export importutils
 
@@ -14,8 +14,6 @@ proc generateInternalProcessMessages(types: NimNode): NimNode =
   ##   for msg in mailboxes[typ].messages:
   ##     try:
   ##       server.process(msg)
-  ##     except KillError as e:
-  ##       raise e
   ##     except CatchableError as e:
   ##       error "Message caused exception", msg = msg, error = e.repr
   ##   --- Repeat for each type - end ---
@@ -25,7 +23,7 @@ proc generateInternalProcessMessages(types: NimNode): NimNode =
   let raisesPragma = nnkPragma.newTree(
     nnkExprColonExpr.newTree(
       ident("raises"),
-      nnkBracket.newTree(ident("KillError"))
+      nnkBracket.newTree()
     )
   )
   result.pragma = raisesPragma
@@ -44,14 +42,9 @@ proc generateInternalProcessMessages(types: NimNode): NimNode =
           debug "Bulk recv: Thread <= Mailbox", server = `server`, msgTyp = $`typ`, msg = msg
           try:
             `server`.process(msg)
-          except KillError as e:
-            raise e ## Reraise Exception so it can break the server loop
           
           except CatchableError as e:
             error("Message caused exception", server = `server`, msgType = $typeOf(msg), msg = msg, error = e[])
-      
-      except KillError as e:
-        raise e ## Reraise Exception so it can break the server loop
       
       except CatchableError as e:
         error("Failed to access mailbox", server = `server`, mailboxType = $`typ`, error = e[])
@@ -108,6 +101,36 @@ proc generateMailboxes(types: NimNode, size: NimNode): NimNode =
   mailboxTable.add(mailboxesIdent)
   return newBlockStmt(mailboxTable)
 
+proc generateDestructorProc(types: NimNode): NimNode =
+  ## Generates a proc for destroying all receiving mailboxes in a given ServerActor
+  ## ```
+  ## proc destroy(server: ServerActor) {.nimcall, raises: [].}=
+  ##   --- Repeat for each type - start ---
+  ##   destroyMailbox(server.sources[`typ]`)
+  ##   --- Repeat for each type - end ---
+  ## ```
+  result = newProc(procType = nnkLambda)
+  let raisesPragma = nnkPragma.newTree(
+    nnkExprColonExpr.newTree(
+      ident("raises"),
+      nnkBracket.newTree()
+    )
+  )
+  result.pragma = raisesPragma
+
+  let server = ident("server")
+  let serverParam = newIdentDefs(
+    server, ident("ServerActor")
+  )
+  result.params.add(serverParam)
+  for typ in types:
+    let destroyMailboxNode = quote do:
+      try:
+        destroyMailbox(`server`.sources[`typ`])
+      except CatchableError as e:
+        error "Failed to destroy mailbox", server = `server`, mailboxType = $`typ`, error = e[]
+    result.body.add(destroyMailboxNode)
+
 proc validateTypes(types: NimNode) =
   case types.kind
   of nnkBracket:
@@ -136,21 +159,27 @@ proc createServerActor(
   let boxesBlockNode = generateMailboxes(types, mailboxSize)
   let processProcNode = generateInternalProcessMessages(types)
   let hasMessagesProcNode = generateInternalHasMessages(types)
-  echo processProcNode.repr
+  let destructorProcNode = generateDestructorProc(types)
+
   return quote do:
     block:
       privateAccess(ServerActor)
       let processProc = `processProcNode`
       let mailboxes = `boxesBlockNode`
       let hasMessagesProc = `hasMessagesProcNode`
-      ServerActor(
+      let destructorProc = `destructorProcNode`
+      let server = createShared(ServerActorObj)
+      server[] = ServerActorObj(
         name: `serverName`,
         sources: mailboxes,
         processProc: processProc,
         hasMessagesProc: hasMessagesProc,
+        destructorProc: destructorProc,
         signalReceiver: new(ThreadSignalPtr)[]
       )
-
+      server.isRunning.store(true)
+      server
+      
 const DEFAULT_SERVER_NAME = "unspecified"
 const DEFAULT_MAILBOX_SIZE = 5
 macro initServerActor*(

@@ -54,7 +54,7 @@ proc getSource*[T](actor: Actor, typ: typedesc[T]): Option[Mailbox[T]] =
     return none(Mailbox[T])
 
 when not defined(globalpool):
-  import taskpools
+  import pool/pool
 
   proc run*(actor: Actor) {.gcsafe, nimcall, raises: [].} =
     actor.command(
@@ -62,8 +62,8 @@ when not defined(globalpool):
       actor.targetMailboxes
     )
 
-  proc runIn*(actor: Actor, tp: Taskpool) =
+  proc runIn*(actor: Actor, tp: ThreadPool) =
     tp.spawn actor.run()
 
 else:
-  import pool
+  import globalpool

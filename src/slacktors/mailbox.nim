@@ -10,6 +10,7 @@ proc newMailbox*[T](capacity: int): Mailbox[T] =
   return mailbox
   
 proc destroyMailbox*[T](mailbox: Mailbox[T]) =
+  `=destroy`(mailbox[])
   freeShared(mailbox)
 
 proc send*[T](mailbox: Mailbox[T], value: T) = 

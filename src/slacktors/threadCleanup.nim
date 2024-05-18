@@ -1,6 +1,10 @@
+import chronos
+
 proc destroyThreadVariables() =
   when defined(gcOrc):
     GC_fullCollect() # from orc.nim. Has no destructor.
+
+  `=destroy`(getThreadDispatcher())
 
 proc cleanupThread*() {.gcsafe, raises: [].}=
   ## Internally, this clears up known thread variables

@@ -1,7 +1,7 @@
 import std/atomics
 import ./serverActorType
+import ../pool/pool
 import chronicles
-import taskpools
 
 var IS_RUNNING*: Atomic[bool] ## \
 ## Global switch that controls whether threadServers keep running or shut down.
@@ -9,16 +9,13 @@ var IS_RUNNING*: Atomic[bool] ## \
 ## ThreadButler default event-loops.
 IS_RUNNING.store(true)
 
-proc isRunning*(): bool = IS_RUNNING.load()
-proc shutdownAllServers*() = IS_RUNNING.store(false)
-
-proc shutdownServer*() =
-  ## Triggers the graceful shut down of the thread-server this proc is called on.
-  raise newException(KillError, "Shutdown")
+proc isGlobalRunning*(): bool = IS_RUNNING.load()
+proc shutdownAllServers*() =  IS_RUNNING.store(false)
 
 proc runServerLoop(server: ServerActor) {.gcsafe.} =
+  var server = server
   block serverLoop: 
-    while isRunning():
+    while isGlobalRunning() and server.isRunning():
       {.gcsafe}: 
         try:
           if not server.hasMessages():
@@ -26,19 +23,22 @@ proc runServerLoop(server: ServerActor) {.gcsafe.} =
           
           server.processMessages()
           
-        except KillError as e:
-          server.gracefulShutdown()
-          break serverLoop
           
         except CatchableError as e:
           error "Message caused exception", server = server, error = e[]
 
 proc runServerTask*(actor: ServerActor) {.gcsafe, nimcall, raises: [].} =
+  let serverName = $actor
   try:
     actor.runServerLoop()
   except Exception as e:
-    error("Server crashed with exception: ", server = actor, error = e[])
-  notice("Server finished", server = actor)
+    error("Server crashed with exception: ", server = serverName, error = e[])
+  finally:
+    try:
+      {.gcsafe.}: actor.gracefulShutdown()
+    except ShutdownError as e:
+      error "Server failed to shut down gracefully", server = serverName, error = e[]
+  notice("Server finished", server = serverName)
 
-proc runIn*(actor: ServerActor, tp: Taskpool) =
+proc runIn*(actor: ServerActor, tp: ThreadPool) =
   tp.spawn actor.runServerTask()

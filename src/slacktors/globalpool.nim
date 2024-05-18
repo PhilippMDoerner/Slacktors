@@ -1,10 +1,10 @@
 import std/importutils
-import taskpools
+import ./pool/pool
 import ./actor
 
-export taskpools
+export pool
 
-var POOL: Taskpool
+var POOL: ThreadPool
 
 proc runProc(actor: Actor) {.gcsafe, nimcall, raises: [].} =
   privateAccess(Actor)
@@ -17,8 +17,7 @@ proc run*(actor: Actor) =
   POOL.spawn actor.runProc()
 
 proc openPool*(size: int) =
-  POOL = Taskpool.new(num_threads = size)
+  POOL = ThreadPool.new(numThreads = size)
 
 proc closePool*() =
-  POOL.syncAll()
   POOL.shutDown()
