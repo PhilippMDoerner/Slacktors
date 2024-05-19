@@ -11,7 +11,7 @@ proc clearThreadVariables() =
   when defined(gcOrc):
     GC_fullCollect() # from orc.nim. Has no destructor.
 
-proc cleanupThread*() {.gcsafe, raises: [].}=
+proc cleanupThread*() {.gcsafe, raises: [].} =
   ## Internally, this clears up known thread variables
   ## that were likely set to avoid memory leaks.
   ## May become unnecessary if https://github.com/nim-lang/Nim/issues/23165 ever gets fixed
@@ -19,7 +19,7 @@ proc cleanupThread*() {.gcsafe, raises: [].}=
     try:
       clearThreadVariables()
     except Exception as e:
-      error "Exception during cleanup: ", error = e[]
+      error "POOL: Exception during cleanup: ", error = e[]
 
 type 
   ThreadPoolObj = object
@@ -40,7 +40,7 @@ template spawn*(pool: ThreadPool, call: untyped) =
   pool.tasks[].send(toTask(call))
 
 proc clearTasks(pool: ThreadPool) =
-  trace "Start Clearing tasks", taskCount = pool.getTaskCount()
+  trace "POOL: Start Clearing tasks", taskCount = pool.getTaskCount()
   
   var task: Task
   while pool.tasks[].tryRecv(task):
@@ -51,7 +51,7 @@ proc clearTasks(pool: ThreadPool) =
     finally:
       `=destroy`(task)
   
-  trace "Finished Clearing tasks"
+  trace "POOL: Finished Clearing tasks"
 
 proc destroy(pool: ThreadPool) =
   `=destroy`(pool.tasks[])
@@ -60,7 +60,7 @@ proc destroy(pool: ThreadPool) =
   freeShared(pool)
 
 proc shutDown*(pool: ThreadPool) =
-  trace "Start shutting down global Threadpool"
+  trace "POOL: Start shutting down global Threadpool"
   pool.active.store(false)
   
   for index in 0..<pool.workers.len:
@@ -70,11 +70,11 @@ proc shutDown*(pool: ThreadPool) =
   joinThreads(pool.workers)
   
   pool.clearTasks()
-  trace "Finished shut down of global Threadpool"
+  trace "POOL: Finished shut down of global Threadpool"
   
-  trace "Start destroying ThreadPool"
+  trace "POOL: Start destroying ThreadPool"
   pool.destroy()
-  trace "Finished destroying ThreadPool"
+  trace "POOL: Finished destroying ThreadPool"
 
 proc isRunning*(pool: ThreadPool): bool =
   pool.active.load()
@@ -84,16 +84,16 @@ proc getTask(pool: ThreadPool): Task =
 
 proc threadLoop(params: (ThreadPool, WorkerId)) {.thread, nimcall.} =
   let (pool, workerId) = params
-  trace "Start Worker Thread", workerId = workerId
+  trace "POOL: Start Worker Thread", workerId = workerId
   while pool.isRunning():
     try:
       pool.getTask().invoke()
-      trace "Task finished", workerId = workerId
+      trace "POOL: Task finished", workerId = workerId
       
     except CatchableError as e:
-      error "Exception in task: ", workerId = workerId, error = e[]
+      error "POOL: Exception in task: ", workerId = workerId, error = e[]
   
-  trace "Finished Worker Thread", workerId = workerId
+  trace "POOL: Finished Worker Thread", workerId = workerId
   cleanupThread()
 
 proc initWorkers(pool: ThreadPool) =
@@ -105,7 +105,7 @@ proc initWorkers(pool: ThreadPool) =
     )
 
 proc new*(t: typedesc[ThreadPool], numThreads: int = countProcessors()): ThreadPool =
-  trace "Creating new ThreadPool", threadCount = numThreads
+  trace "POOL: Creating new ThreadPool", threadCount = numThreads
   result = createShared(ThreadPoolObj)
   result[] = ThreadPoolObj(
     tasks: createShared(Chan[Task]),
