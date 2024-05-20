@@ -1,7 +1,7 @@
 import ./serverActorType
 import chronos
 import chronos/threadsync
-import std/[importutils, sequtils, strutils, strformat, atomics, macros]
+import std/[importutils, genasts, sequtils, strutils, strformat, atomics, macros]
 
 export importutils
 
@@ -36,18 +36,18 @@ proc generateInternalProcessMessages(types: NimNode): NimNode =
   result.params.add(serverParam)
   
   for typ in types:
-    let processMailboxNode = quote do:
+    let processMailboxNode = genAst(server = server, typ = typ):
       try:
-        for msg in `server`.sources[`typ`].messages:
-          debug "Bulk recv: Thread <= Mailbox", server = `server`, msgTyp = $`typ`, msg = msg
+        for msg in server.sources[typ].messages:
+          trace "Bulk recv: Thread <= Mailbox", server = server, msgTyp = $typ, msg = msg.repr
           try:
-            `server`.process(msg)
-          
+            server.process(msg)
+                
           except CatchableError as e:
-            error("Message caused exception", server = `server`, msgType = $typeOf(msg), msg = msg, error = e[])
+            error("Message caused exception", server = server, msgType = $typeOf(msg), msg = msg.repr, error = e[])
       
       except CatchableError as e:
-        error("Failed to access mailbox", server = `server`, mailboxType = $`typ`, error = e[])
+        error("Failed to access mailbox", server = server, mailboxType = $typ, error = e[])
     result.body.add(processMailboxNode)
 
 proc generateInternalHasMessages(types: NimNode): NimNode =
