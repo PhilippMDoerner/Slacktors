@@ -18,12 +18,13 @@ template newActor*(
 ): Actor =
   block:
     proc command(sources, targets: MailboxTable) {.nimcall, gcsafe, raises: [].} =
-      try:
-        runProc(sources, targets)
-      except Exception as e:
-        onError(e)
-      finally:
-        threadCleanup.cleanupThread()
+      block:
+        try:
+          runProc(sources, targets)
+        except Exception as e:
+          onError(e)
+          
+      threadCleanup.cleanupThread()
         
     Actor(command: command)
 

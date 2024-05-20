@@ -1,4 +1,4 @@
-import std/[atomics, macros, strformat]
+import std/[atomics, macros, deques, heapqueue, strformat, importutils]
 import chronos
 import chronos/threadsync
 import ../mailboxTable
@@ -50,15 +50,28 @@ proc processMessages*(actor: ServerActor) =
 proc hasMessages*(actor: ServerActor): bool = 
   return actor.hasMessagesProc(actor.sources)
 
+proc processRemainingAsyncWork*(server: ServerActor) =
+  trace "Start processing remaining async work", server = server.name
+  
+  try:
+    waitFor sleepAsync(3000)
+  except CatchableError as e:
+    error "Exception while processing async work during shutdown", server = server, error = e[]
+
+  trace "Finished processing remaining async work", server = server.name
+
 proc gracefulShutdown*(server: ServerActor) =
   let serverName = $server
   notice "Regular shut down of server started", server = serverName
   server.processMessages() # Process remaining messages
+  server.processRemainingAsyncWork()
   let closeResult = server.signalReceiver.close()
   if closeResult.isErr():
     raise newException(ShutdownError, closeResult.error)
   
   server.destructorProc(server)
+  `=destroy`(server.sources)
+  `=destroy`(server.targets)
   freeShared(server)
   notice "Regular shut down of server ended", server = serverName
 

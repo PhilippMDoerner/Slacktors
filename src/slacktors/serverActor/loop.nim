@@ -1,6 +1,8 @@
 import std/atomics
 import ./serverActorType
+import ../threadCleanup
 import ../pool/pool
+import chronos
 import chronicles
 
 var IS_RUNNING*: Atomic[bool] ## \
@@ -23,22 +25,21 @@ proc runServerLoop(server: ServerActor) {.gcsafe.} =
           
           server.processMessages()
           
-          
         except CatchableError as e:
           error "Message caused exception", server = server, error = e[]
-
+  
 proc runServerTask*(actor: ServerActor) {.gcsafe, nimcall, raises: [].} =
   let serverName = $actor
-  try:
-    actor.runServerLoop()
-  except Exception as e:
-    error("Server crashed with exception: ", server = serverName, error = e[])
-  finally:
+  block:
     try:
-      {.gcsafe.}: actor.gracefulShutdown()
-    except ShutdownError as e:
-      error "Server failed to shut down gracefully", server = serverName, error = e[]
-  notice("Server finished", server = serverName)
-
+      actor.runServerLoop()
+    except Exception as e:
+      error("Server crashed with exception: ", server = serverName, error = e[])
+    finally:
+      try:
+        {.gcsafe.}: actor.gracefulShutdown()
+      except ShutdownError as e:
+        error("Failed to gracefully shut down server: ", server = serverName, error = e[])
+  threadCleanup.cleanupThread()
 proc runIn*(actor: ServerActor, tp: ThreadPool) =
   tp.spawn actor.runServerTask()

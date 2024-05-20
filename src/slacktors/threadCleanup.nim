@@ -1,10 +1,11 @@
 import chronos
+import chronicles
 
 proc destroyThreadVariables() =
+  `=destroy`(getThreadDispatcher())
   when defined(gcOrc):
     GC_fullCollect() # from orc.nim. Has no destructor.
 
-  `=destroy`(getThreadDispatcher())
 
 proc cleanupThread*() {.gcsafe, raises: [].}=
   ## Internally, this clears up known thread variables
@@ -14,5 +15,5 @@ proc cleanupThread*() {.gcsafe, raises: [].}=
     try:
       destroyThreadVariables()
     except Exception as e:
-      echo "Exception during cleanup: " & e.msg
+      error "Exception during cleanup: ", error = e[]
 
