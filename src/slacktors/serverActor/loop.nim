@@ -15,7 +15,6 @@ proc isGlobalRunning*(): bool = IS_RUNNING.load()
 proc shutdownAllServers*() =  IS_RUNNING.store(false)
 
 proc runServerLoop(server: ServerActor) {.gcsafe.} =
-  var server = server
   block serverLoop: 
     while isGlobalRunning() and server.isRunning():
       {.gcsafe}: 
@@ -41,5 +40,6 @@ proc runServerTask*(actor: ServerActor) {.gcsafe, nimcall, raises: [].} =
       except ShutdownError as e:
         error("Failed to gracefully shut down server: ", server = serverName, error = e[])
   threadCleanup.cleanupThread()
+
 proc runIn*(actor: ServerActor, tp: ThreadPool) =
   tp.spawn actor.runServerTask()

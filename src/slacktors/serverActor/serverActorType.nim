@@ -28,7 +28,7 @@ proc sendWakeupSignalTo*(server: ServerActor) =
   if not hasSentSignal:
     notice "Failed to wake up server: ", targetServer = server.name
 
-proc isRunning*(server: var ServerActor): bool = server.isRunning.load()
+proc isRunning*(server: ServerActor): bool = server.isRunning.load()
 
 proc shutdownServer*(server: var ServerActor) =
   ## Triggers the graceful shut down of the thread-server this proc is called on.
@@ -75,10 +75,10 @@ proc gracefulShutdown*(server: ServerActor) =
   freeShared(server)
   notice "Regular shut down of server ended", server = serverName
 
-proc sendTo*[T](value: T, server: ServerActor) =
+proc sendTo*[T](value: sink T, server: ServerActor) =
   debug "trySend  : Thread => Mailbox", server = server.name, msgTyp = $T
   try:
-    server.sources[T].send(value)
+    server.sources[T].send(move value)
     server.sendWakeupSignalTo()
   
   except KeyError as e:

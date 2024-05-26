@@ -9,8 +9,8 @@ import ./slacktors/globalpool
 
 ## TODO:
 ## - Fix memory leaks:
-##    - Waiting for signal: waitFor signalReceiver.wait() (serverActorType 4)
 ##    - When sending a deepcopy somehow (mailbox 18)
+##      - That one might be a problem of the channel not being empty (?)
 ## 
 ## One solution might be to just forego exceptions entirely. To do that, remove all the killer exception stuff and move ServerActor towards being a ptr type
 
@@ -57,32 +57,24 @@ when isMainModule:
     
     
   # SERVER EXAMPLE
-  type KillMsg = distinct int
-  proc `$`(x: KillMsg): string = $int(x)
-
-  proc process(server: ServerActor, x: KillMsg) = 
-    var server = server
-    server.shutdownServer()
-  proc process[T](server: ServerActor, x: T) = discard
-  proc processAsync(server: ServerActor, x: int) {.async.} =
-    echo "Intmsg"
-    sleep(50)
-    echo "Laterecho"
+  import std/strutils
   
-  proc process(server: ServerActor, x: int) =
-    asyncSpawn server.processAsync(x)
+  type A = ref object
+  type MyObj = ref object
+    name: string
+      
+  proc process(server: ServerActor, x: MyObj)=
+    sleep(50)
+    echo "Received MyObj message"
 
-  var server: ServerActor = initServerActor(5, "Jabrody", int, string, float, KillMsg)
+  var server: ServerActor = initServerActor(5, "Jabrody", MyObj)
   var tp = ThreadPool.new(num_threads = 2)
   server.runIn(tp)
-
-  for x in 0..4:
-    sleep(1)
-    x.sendTo(server)
-    ($x).sendTo(server)
-    (x.float).sendTo(server) 
-
-  sleep(3000)
-  (0.KillMsg).sendTo(server)
-  echo "Do da shutdown ?"
+  var a = A()
+  let msg = MyObj(name: "blablabla".repeat(20))
+  for x in 0..1:
+    msg.sendTo(server)
+  
+  sleep(2_000)
+  server.shutDownServer()
   tp.shutDown()
